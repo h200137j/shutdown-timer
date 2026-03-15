@@ -2,6 +2,14 @@
 
 A simple desktop app to schedule and cancel system shutdowns.
 
+## Download
+
+Grab the latest `.deb` installer from the [Releases page](../../releases/latest) and install it with:
+
+```bash
+sudo apt install ./shutdown-timer_1.0.0_all.deb
+```
+
 ## Requirements
 
 - Python 3.8+
