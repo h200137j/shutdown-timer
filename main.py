@@ -78,12 +78,13 @@ class ShutdownTimer(QWidget):
         self.countdown_timer.timeout.connect(self.update_countdown)
         self.remaining_seconds = 0
         self.notified = set()
+        self.action = "shutdown"  # shutdown | reboot | suspend | hibernate
         self.init_ui()
         self.init_tray()
 
     def init_ui(self):
         self.setWindowTitle("Shutdown Timer")
-        self.setFixedSize(420, 530)
+        self.setFixedSize(420, 585)
         self.setStyleSheet(APP_STYLE)
 
         main_layout = QVBoxLayout()
@@ -231,13 +232,46 @@ class ShutdownTimer(QWidget):
         self.input_stack.addWidget(duration_page)
         self.input_stack.addWidget(exact_page)
         main_layout.addWidget(self.input_stack)
-        main_layout.addSpacing(18)
+        main_layout.addSpacing(14)
+
+        # ── Action selector ──────────────────────────────────────
+        action_frame = QFrame()
+        action_frame.setStyleSheet(
+            f"QFrame {{ background-color: {SECONDARY}; border-radius: 10px; }}"
+        )
+        action_frame.setFixedHeight(38)
+        af_layout = QHBoxLayout(action_frame)
+        af_layout.setContentsMargins(4, 4, 4, 4)
+        af_layout.setSpacing(3)
+
+        def _action_style(active):
+            if active:
+                return (f"QPushButton {{ background-color: {ACCENT}; color: white;"
+                        f" border-radius: 7px; font-size: 11px; font-weight: bold; border: none; }}")
+            return (f"QPushButton {{ background-color: transparent; color: {TEXT_MUTED};"
+                    f" border-radius: 7px; font-size: 11px; border: none; }}"
+                    f"QPushButton:hover {{ color: {TEXT_PRIMARY}; }}")
+
+        self._action_style_fn = _action_style
+        self.action_btns = {}
+        for key, label in [("shutdown", "Shutdown"), ("reboot", "Reboot"),
+                           ("suspend", "Suspend"), ("hibernate", "Hibernate")]:
+            btn = QPushButton(label)
+            btn.setFixedHeight(30)
+            btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            btn.setStyleSheet(_action_style(key == "shutdown"))
+            btn.clicked.connect(lambda _, k=key: self._set_action(k))
+            af_layout.addWidget(btn)
+            self.action_btns[key] = btn
+
+        main_layout.addWidget(action_frame)
+        main_layout.addSpacing(14)
 
         # ── Buttons ──────────────────────────────────────────────
         btn_layout = QHBoxLayout()
         btn_layout.setSpacing(12)
 
-        self.set_btn = QPushButton("Set Shutdown")
+        self.set_btn = QPushButton("Set Shutdown")  # text updated by _set_action
         self.set_btn.setFixedHeight(48)
         self.set_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.set_btn.setStyleSheet(
@@ -316,6 +350,18 @@ class ShutdownTimer(QWidget):
             2500
         )
 
+    def _set_action(self, key):
+        self.action = key
+        for k, btn in self.action_btns.items():
+            btn.setStyleSheet(self._action_style_fn(k == key))
+        labels = {
+            "shutdown": "Set Shutdown",
+            "reboot":   "Set Reboot",
+            "suspend":  "Set Suspend",
+            "hibernate": "Set Hibernate",
+        }
+        self.set_btn.setText(labels[key])
+
     def _set_mode(self, index):
         self.input_stack.setCurrentIndex(index)
         self.mode_duration_btn.setStyleSheet(self._toggle_style_fn(index == 0))
@@ -332,7 +378,6 @@ class ShutdownTimer(QWidget):
             if total_minutes == 0:
                 QMessageBox.warning(self, "Invalid Time", "Please set at least 1 minute.")
                 return
-            status_str = f"Shutting down in {hours}h {minutes}m" if hours else f"Shutting down in {minutes}m"
         else:
             # Exact time mode
             target = self.time_edit.time()
@@ -344,13 +389,25 @@ class ShutdownTimer(QWidget):
             if total_minutes <= 0:
                 QMessageBox.warning(self, "Invalid Time", "Please choose a future time.")
                 return
-            status_str = f"Shutting down at {target.toString('hh:mm AP')}"
 
-        try:
-            subprocess.run(["sudo", "shutdown", f"+{total_minutes}"], check=True)
-        except subprocess.CalledProcessError:
-            QMessageBox.critical(self, "Error", "Failed to schedule shutdown.\nMake sure you have sudo privileges.")
-            return
+        # Build action-aware status string
+        verbs = {"shutdown": "Shutting down", "reboot": "Rebooting",
+                 "suspend": "Suspending", "hibernate": "Hibernating"}
+        verb = verbs[self.action]
+        if mode == 0:
+            status_str = f"{verb} in {hours}h {minutes}m" if hours else f"{verb} in {minutes}m"
+        else:
+            status_str = f"{verb} at {target.toString('hh:mm AP')}"
+
+        # Schedule the action
+        if self.action in ("shutdown", "reboot"):
+            cmd = ["sudo", "shutdown"] + (["-r"] if self.action == "reboot" else []) + [f"+{total_minutes}"]
+            try:
+                subprocess.run(cmd, check=True)
+            except subprocess.CalledProcessError:
+                QMessageBox.critical(self, "Error", f"Failed to schedule {self.action}.\nMake sure you have sudo privileges.")
+                return
+        # suspend/hibernate: executed by Python timer when countdown reaches 0
 
         self.remaining_seconds = total_minutes * 60
         self.notified.clear()
@@ -361,6 +418,8 @@ class ShutdownTimer(QWidget):
         self.cancel_btn.setEnabled(True)
         self.mode_duration_btn.setEnabled(False)
         self.mode_exact_btn.setEnabled(False)
+        for btn in self.action_btns.values():
+            btn.setEnabled(False)
         self.hours_spin.setEnabled(False)
         self.minutes_spin.setEnabled(False)
         self.time_edit.setEnabled(False)
@@ -369,26 +428,31 @@ class ShutdownTimer(QWidget):
         self.status_label.setStyleSheet(f"color: {ACCENT}; font-size: 12px;")
 
     def cancel_shutdown(self):
-        try:
-            subprocess.run(["sudo", "shutdown", "-c"], check=True)
-        except subprocess.CalledProcessError:
-            QMessageBox.critical(self, "Error", "Failed to cancel shutdown.")
-            return
+        if self.action in ("shutdown", "reboot"):
+            try:
+                subprocess.run(["sudo", "shutdown", "-c"], check=True)
+            except subprocess.CalledProcessError:
+                QMessageBox.critical(self, "Error", f"Failed to cancel {self.action}.")
+                return
 
         self.countdown_timer.stop()
         self.remaining_seconds = 0
         self.notified.clear()
         self.countdown_label.setText("00:00:00")
         self.countdown_label.setStyleSheet(f"color: {TEXT_PRIMARY}; letter-spacing: 4px;")
+        self.tray.setToolTip("Shutdown Timer — Idle")
 
         self.set_btn.setEnabled(True)
         self.cancel_btn.setEnabled(False)
         self.mode_duration_btn.setEnabled(True)
         self.mode_exact_btn.setEnabled(True)
+        for btn in self.action_btns.values():
+            btn.setEnabled(True)
         self.hours_spin.setEnabled(True)
         self.minutes_spin.setEnabled(True)
         self.time_edit.setEnabled(True)
-        self.status_label.setText("Shutdown cancelled")
+        labels = {"shutdown": "Shutdown", "reboot": "Reboot", "suspend": "Suspend", "hibernate": "Hibernate"}
+        self.status_label.setText(f"{labels[self.action]} cancelled")
         self.status_label.setStyleSheet("color: #4caf50; font-size: 12px;")
 
     def _refresh_countdown_display(self):
@@ -402,12 +466,12 @@ class ShutdownTimer(QWidget):
             self.countdown_label.setStyleSheet(f"color: {TEXT_PRIMARY}; letter-spacing: 2px;")
 
     def _notify(self, minutes):
-        messages = {
-            10: ("Shutting down in 10 minutes", "Save your work!"),
-            5:  ("Shutting down in 5 minutes",  "Save your work now!"),
-            1:  ("Shutting down in 1 minute",   "Last chance to save!"),
-        }
-        title, body = messages[minutes]
+        verbs = {"shutdown": "Shutting down", "reboot": "Rebooting",
+                 "suspend": "Suspending", "hibernate": "Hibernating"}
+        verb = verbs[self.action]
+        bodies = {10: "Save your work!", 5: "Save your work now!", 1: "Last chance to save!"}
+        title = f"{verb} in {minutes} minute{'s' if minutes > 1 else ''}"
+        body = bodies[minutes]
         icon = os.path.join(APP_DIR, "icon.png")
         subprocess.Popen(
             ["notify-send", "-i", icon, "-u", "critical", title, body],
@@ -417,6 +481,11 @@ class ShutdownTimer(QWidget):
     def update_countdown(self):
         if self.remaining_seconds <= 0:
             self.countdown_timer.stop()
+            if self.action in ("suspend", "hibernate"):
+                subprocess.Popen(
+                    ["systemctl", self.action],
+                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+                )
             return
         self.remaining_seconds -= 1
         self._refresh_countdown_display()
