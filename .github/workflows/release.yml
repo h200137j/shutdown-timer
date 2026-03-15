@@ -86,3 +86,13 @@ jobs:
             ```
             **Requirements:** Ubuntu / Debian-based Linux with `python3` and `python3-pyqt6` (installed automatically).
           files: shutdown-timer_${{ steps.version.outputs.VERSION }}_all.deb
+
+      - name: Update README version
+        run: |
+          VERSION=${{ steps.version.outputs.VERSION }}
+          sed -i "s/shutdown-timer_.*_all.deb/shutdown-timer_${VERSION}_all.deb/g" README.md
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add README.md
+          git commit -m "chore: update README version to ${VERSION} [skip ci]" || echo "No changes to commit"
+          git push origin master

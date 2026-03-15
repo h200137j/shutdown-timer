@@ -1,5 +1,7 @@
 # Shutdown Timer
 
+![Latest Release](https://img.shields.io/github/v/release/h200137j/shutdown-timer?color=e94560&label=latest%20release&style=flat-square)
+
 A simple desktop app to schedule and cancel system shutdowns.
 
 ## Download
@@ -7,7 +9,8 @@ A simple desktop app to schedule and cancel system shutdowns.
 Grab the latest `.deb` installer from the [Releases page](../../releases/latest) and install it with:
 
 ```bash
-sudo apt install ./shutdown-timer_1.0.0_all.deb
+# VERSION_PLACEHOLDER
+sudo apt install ./shutdown-timer_1.0.1_all.deb
 ```
 
 ## Requirements
