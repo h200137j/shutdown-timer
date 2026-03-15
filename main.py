@@ -1,12 +1,15 @@
 import sys
+import os
 import subprocess
 from PyQt6.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QHBoxLayout,
     QLabel, QSpinBox, QPushButton, QMessageBox, QFrame,
-    QStackedWidget, QTimeEdit
+    QStackedWidget, QTimeEdit, QSystemTrayIcon, QMenu
 )
 from PyQt6.QtCore import Qt, QTimer, QTime
-from PyQt6.QtGui import QFont, QPalette, QColor
+from PyQt6.QtGui import QFont, QPalette, QColor, QIcon, QAction
+
+APP_DIR = os.path.dirname(os.path.abspath(__file__))
 
 
 DARK_BG       = "#1a1a2e"
@@ -75,6 +78,7 @@ class ShutdownTimer(QWidget):
         self.countdown_timer.timeout.connect(self.update_countdown)
         self.remaining_seconds = 0
         self.init_ui()
+        self.init_tray()
 
     def init_ui(self):
         self.setWindowTitle("Shutdown Timer")
@@ -268,6 +272,49 @@ class ShutdownTimer(QWidget):
 
         self.setLayout(main_layout)
 
+    def init_tray(self):
+        icon = QIcon(os.path.join(APP_DIR, "icon.png"))
+        self.tray = QSystemTrayIcon(icon, self)
+        self.tray.setToolTip("Shutdown Timer — Idle")
+
+        menu = QMenu()
+        self.tray_toggle_action = QAction("Hide", self)
+        self.tray_toggle_action.triggered.connect(self.toggle_window)
+        quit_action = QAction("Quit", self)
+        quit_action.triggered.connect(QApplication.instance().quit)
+
+        menu.addAction(self.tray_toggle_action)
+        menu.addSeparator()
+        menu.addAction(quit_action)
+        self.tray.setContextMenu(menu)
+        self.tray.activated.connect(self._tray_activated)
+        self.tray.show()
+
+    def toggle_window(self):
+        if self.isVisible():
+            self.hide()
+            self.tray_toggle_action.setText("Show")
+        else:
+            self.show()
+            self.raise_()
+            self.activateWindow()
+            self.tray_toggle_action.setText("Hide")
+
+    def _tray_activated(self, reason):
+        if reason == QSystemTrayIcon.ActivationReason.DoubleClick:
+            self.toggle_window()
+
+    def closeEvent(self, event):
+        event.ignore()
+        self.hide()
+        self.tray_toggle_action.setText("Show")
+        self.tray.showMessage(
+            "Shutdown Timer",
+            "Running in the background. Double-click the tray icon to restore.",
+            QSystemTrayIcon.MessageIcon.Information,
+            2500
+        )
+
     def _set_mode(self, index):
         self.input_stack.setCurrentIndex(index)
         self.mode_duration_btn.setStyleSheet(self._toggle_style_fn(index == 0))
@@ -343,7 +390,9 @@ class ShutdownTimer(QWidget):
 
     def _refresh_countdown_display(self):
         t = QTime(0, 0).addSecs(self.remaining_seconds)
-        self.countdown_label.setText(t.toString("HH:mm:ss"))
+        time_str = t.toString("HH:mm:ss")
+        self.countdown_label.setText(time_str)
+        self.tray.setToolTip(f"Shutdown Timer — {time_str} remaining")
         if self.remaining_seconds <= 60:
             self.countdown_label.setStyleSheet(f"color: {ACCENT}; letter-spacing: 2px;")
         else:
@@ -360,6 +409,7 @@ class ShutdownTimer(QWidget):
 if __name__ == "__main__":
     app = QApplication(sys.argv)
     app.setStyle("Fusion")
+    app.setQuitOnLastWindowClosed(False)
 
     # Force dark palette base so native widgets inherit dark colors
     palette = QPalette()
