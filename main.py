@@ -345,9 +345,13 @@ class ShutdownTimer(QWidget):
         self.setLayout(main_layout)
 
     def init_tray(self):
-        icon = QIcon(os.path.join(APP_DIR, "icon.png"))
+        icon_path = os.path.join(APP_DIR, "icon.png")
+        icon = QIcon(icon_path)
+        if icon.isNull():
+            icon = QIcon.fromTheme("system-run")
+        
         self.tray = QSystemTrayIcon(icon, self)
-        self.tray.setToolTip("Shutdown Timer — Idle")
+        self.tray.setToolTip("Shutdown Timer")
 
         menu = QMenu()
         self.tray_toggle_action = QAction("Hide", self)
@@ -568,7 +572,14 @@ class ShutdownTimer(QWidget):
 
 
 if __name__ == "__main__":
+    # Fix for tray icon on Wayland (GNOME/KDE)
+    if os.environ.get("XDG_SESSION_TYPE") == "wayland":
+        os.environ["QT_QPA_PLATFORM"] = "xcb"
+
     app = QApplication(sys.argv)
+    app.setApplicationName("Shutdown Timer")
+    app.setOrganizationName("uriel")
+    app.setDesktopFileName("shutdown-timer")
     app.setStyle("Fusion")
     app.setQuitOnLastWindowClosed(False)
 
