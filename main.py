@@ -84,7 +84,7 @@ class ShutdownTimer(QWidget):
 
     def init_ui(self):
         self.setWindowTitle("Shutdown Timer")
-        self.setFixedSize(420, 585)
+        self.setFixedSize(420, 630)
         self.setStyleSheet(APP_STYLE)
 
         main_layout = QVBoxLayout()
@@ -173,9 +173,29 @@ class ShutdownTimer(QWidget):
         tf_layout.addWidget(self.mode_exact_btn)
         toggle_layout.addWidget(toggle_frame)
         main_layout.addLayout(toggle_layout)
-        main_layout.addSpacing(14)
+        main_layout.addSpacing(10)
 
-        # ── Stacked input panels ─────────────────────────────────
+        # ── Preset buttons ───────────────────────────────────────
+        presets_layout = QHBoxLayout()
+        presets_layout.setSpacing(8)
+        preset_style = (
+            f"QPushButton {{ background-color: {SECONDARY}; color: {TEXT_MUTED};"
+            f" border-radius: 6px; font-size: 11px; font-weight: bold; border: none; padding: 4px 0px; }}"
+            f"QPushButton:hover {{ background-color: {SECONDARY_HOVER}; color: {TEXT_PRIMARY}; }}"
+        )
+        self.preset_btns = []
+        for label, h, m in [("15m", 0, 15), ("30m", 0, 30), ("1h", 1, 0), ("2h", 2, 0), ("3h", 3, 0)]:
+            btn = QPushButton(label)
+            btn.setFixedHeight(28)
+            btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            btn.setStyleSheet(preset_style)
+            btn.clicked.connect(lambda _, hh=h, mm=m: self._apply_preset(hh, mm))
+            presets_layout.addWidget(btn)
+            self.preset_btns.append(btn)
+        main_layout.addLayout(presets_layout)
+        main_layout.addSpacing(10)
+
+        # ── Stacked input panels
         self.input_stack = QStackedWidget()
         self.input_stack.setFixedHeight(78)
 
@@ -362,6 +382,11 @@ class ShutdownTimer(QWidget):
         }
         self.set_btn.setText(labels[key])
 
+    def _apply_preset(self, hours, minutes):
+        self._set_mode(0)  # switch to Duration mode
+        self.hours_spin.setValue(hours)
+        self.minutes_spin.setValue(minutes)
+
     def _set_mode(self, index):
         self.input_stack.setCurrentIndex(index)
         self.mode_duration_btn.setStyleSheet(self._toggle_style_fn(index == 0))
@@ -418,6 +443,8 @@ class ShutdownTimer(QWidget):
         self.cancel_btn.setEnabled(True)
         self.mode_duration_btn.setEnabled(False)
         self.mode_exact_btn.setEnabled(False)
+        for btn in self.preset_btns:
+            btn.setEnabled(False)
         for btn in self.action_btns.values():
             btn.setEnabled(False)
         self.hours_spin.setEnabled(False)
@@ -446,6 +473,8 @@ class ShutdownTimer(QWidget):
         self.cancel_btn.setEnabled(False)
         self.mode_duration_btn.setEnabled(True)
         self.mode_exact_btn.setEnabled(True)
+        for btn in self.preset_btns:
+            btn.setEnabled(True)
         for btn in self.action_btns.values():
             btn.setEnabled(True)
         self.hours_spin.setEnabled(True)
