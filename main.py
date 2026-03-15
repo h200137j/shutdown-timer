@@ -2,7 +2,8 @@ import sys
 import subprocess
 from PyQt6.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QHBoxLayout,
-    QLabel, QSpinBox, QPushButton, QMessageBox, QFrame
+    QLabel, QSpinBox, QPushButton, QMessageBox, QFrame,
+    QStackedWidget, QTimeEdit
 )
 from PyQt6.QtCore import Qt, QTimer, QTime
 from PyQt6.QtGui import QFont, QPalette, QColor
@@ -47,6 +48,23 @@ APP_STYLE = f"""
         background-color: {CARD_BG};
         color: {TEXT_PRIMARY};
     }}
+    QTimeEdit {{
+        background-color: {SPIN_BG};
+        color: {TEXT_PRIMARY};
+        border: 2px solid {SPIN_BORDER};
+        border-radius: 8px;
+        padding: 6px 10px;
+        font-size: 22px;
+        font-weight: bold;
+    }}
+    QTimeEdit::up-button, QTimeEdit::down-button {{
+        width: 20px;
+        background-color: {SECONDARY};
+        border-radius: 4px;
+    }}
+    QTimeEdit::up-button:hover, QTimeEdit::down-button:hover {{
+        background-color: {SECONDARY_HOVER};
+    }}
 """
 
 
@@ -60,7 +78,7 @@ class ShutdownTimer(QWidget):
 
     def init_ui(self):
         self.setWindowTitle("Shutdown Timer")
-        self.setFixedSize(420, 480)
+        self.setFixedSize(420, 530)
         self.setStyleSheet(APP_STYLE)
 
         main_layout = QVBoxLayout()
@@ -109,10 +127,56 @@ class ShutdownTimer(QWidget):
         card_layout.addWidget(self.status_label)
 
         main_layout.addWidget(card)
-        main_layout.addSpacing(18)
+        main_layout.addSpacing(14)
 
-        # ── Spinboxes ────────────────────────────────────────────
-        spin_layout = QHBoxLayout()
+        # ── Mode toggle ──────────────────────────────────────────
+        toggle_layout = QHBoxLayout()
+        toggle_layout.setSpacing(0)
+
+        toggle_frame = QFrame()
+        toggle_frame.setStyleSheet(
+            f"QFrame {{ background-color: {SECONDARY}; border-radius: 10px; }}"
+        )
+        toggle_frame.setFixedHeight(38)
+        tf_layout = QHBoxLayout(toggle_frame)
+        tf_layout.setContentsMargins(4, 4, 4, 4)
+        tf_layout.setSpacing(4)
+
+        def _toggle_style(active):
+            if active:
+                return (f"QPushButton {{ background-color: {ACCENT}; color: white;"
+                        f" border-radius: 7px; font-size: 12px; font-weight: bold; border: none; }}")
+            return (f"QPushButton {{ background-color: transparent; color: {TEXT_MUTED};"
+                    f" border-radius: 7px; font-size: 12px; border: none; }}"
+                    f"QPushButton:hover {{ color: {TEXT_PRIMARY}; }}")
+
+        self.mode_duration_btn = QPushButton("Duration")
+        self.mode_duration_btn.setFixedHeight(30)
+        self.mode_duration_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.mode_duration_btn.setStyleSheet(_toggle_style(True))
+        self.mode_duration_btn.clicked.connect(lambda: self._set_mode(0))
+
+        self.mode_exact_btn = QPushButton("Exact Time")
+        self.mode_exact_btn.setFixedHeight(30)
+        self.mode_exact_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.mode_exact_btn.setStyleSheet(_toggle_style(False))
+        self.mode_exact_btn.clicked.connect(lambda: self._set_mode(1))
+
+        self._toggle_style_fn = _toggle_style
+        tf_layout.addWidget(self.mode_duration_btn)
+        tf_layout.addWidget(self.mode_exact_btn)
+        toggle_layout.addWidget(toggle_frame)
+        main_layout.addLayout(toggle_layout)
+        main_layout.addSpacing(14)
+
+        # ── Stacked input panels ─────────────────────────────────
+        self.input_stack = QStackedWidget()
+        self.input_stack.setFixedHeight(78)
+
+        # Page 0 — Duration
+        duration_page = QWidget()
+        spin_layout = QHBoxLayout(duration_page)
+        spin_layout.setContentsMargins(0, 0, 0, 0)
         spin_layout.setSpacing(14)
 
         hours_col = QVBoxLayout()
@@ -142,7 +206,26 @@ class ShutdownTimer(QWidget):
 
         spin_layout.addLayout(hours_col)
         spin_layout.addLayout(minutes_col)
-        main_layout.addLayout(spin_layout)
+
+        # Page 1 — Exact time
+        exact_page = QWidget()
+        exact_layout = QVBoxLayout(exact_page)
+        exact_layout.setContentsMargins(0, 0, 0, 0)
+        exact_layout.setSpacing(4)
+        exact_lbl = QLabel("SHUT DOWN AT")
+        exact_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        exact_lbl.setStyleSheet(f"color: {TEXT_MUTED}; font-size: 10px; letter-spacing: 2px;")
+        self.time_edit = QTimeEdit()
+        self.time_edit.setDisplayFormat("hh:mm AP")
+        self.time_edit.setTime(QTime.currentTime().addSecs(3600))
+        self.time_edit.setFixedHeight(48)
+        self.time_edit.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        exact_layout.addWidget(exact_lbl)
+        exact_layout.addWidget(self.time_edit)
+
+        self.input_stack.addWidget(duration_page)
+        self.input_stack.addWidget(exact_page)
+        main_layout.addWidget(self.input_stack)
         main_layout.addSpacing(18)
 
         # ── Buttons ──────────────────────────────────────────────
@@ -185,14 +268,35 @@ class ShutdownTimer(QWidget):
 
         self.setLayout(main_layout)
 
-    def set_shutdown(self):
-        hours = self.hours_spin.value()
-        minutes = self.minutes_spin.value()
-        total_minutes = hours * 60 + minutes
+    def _set_mode(self, index):
+        self.input_stack.setCurrentIndex(index)
+        self.mode_duration_btn.setStyleSheet(self._toggle_style_fn(index == 0))
+        self.mode_exact_btn.setStyleSheet(self._toggle_style_fn(index == 1))
 
-        if total_minutes == 0:
-            QMessageBox.warning(self, "Invalid Time", "Please set at least 1 minute.")
-            return
+    def set_shutdown(self):
+        mode = self.input_stack.currentIndex()
+
+        if mode == 0:
+            # Duration mode
+            hours = self.hours_spin.value()
+            minutes = self.minutes_spin.value()
+            total_minutes = hours * 60 + minutes
+            if total_minutes == 0:
+                QMessageBox.warning(self, "Invalid Time", "Please set at least 1 minute.")
+                return
+            status_str = f"Shutting down in {hours}h {minutes}m" if hours else f"Shutting down in {minutes}m"
+        else:
+            # Exact time mode
+            target = self.time_edit.time()
+            now = QTime.currentTime()
+            total_minutes = now.secsTo(target) // 60
+            if total_minutes <= 0:
+                # Target is tomorrow
+                total_minutes += 24 * 60
+            if total_minutes <= 0:
+                QMessageBox.warning(self, "Invalid Time", "Please choose a future time.")
+                return
+            status_str = f"Shutting down at {target.toString('hh:mm AP')}"
 
         try:
             subprocess.run(["sudo", "shutdown", f"+{total_minutes}"], check=True)
@@ -206,11 +310,13 @@ class ShutdownTimer(QWidget):
 
         self.set_btn.setEnabled(False)
         self.cancel_btn.setEnabled(True)
+        self.mode_duration_btn.setEnabled(False)
+        self.mode_exact_btn.setEnabled(False)
         self.hours_spin.setEnabled(False)
         self.minutes_spin.setEnabled(False)
+        self.time_edit.setEnabled(False)
 
-        time_str = f"{hours}h {minutes}m" if hours else f"{minutes}m"
-        self.status_label.setText(f"Shutting down in {time_str}")
+        self.status_label.setText(status_str)
         self.status_label.setStyleSheet(f"color: {ACCENT}; font-size: 12px;")
 
     def cancel_shutdown(self):
@@ -227,8 +333,11 @@ class ShutdownTimer(QWidget):
 
         self.set_btn.setEnabled(True)
         self.cancel_btn.setEnabled(False)
+        self.mode_duration_btn.setEnabled(True)
+        self.mode_exact_btn.setEnabled(True)
         self.hours_spin.setEnabled(True)
         self.minutes_spin.setEnabled(True)
+        self.time_edit.setEnabled(True)
         self.status_label.setText("Shutdown cancelled")
         self.status_label.setStyleSheet("color: #4caf50; font-size: 12px;")
 
