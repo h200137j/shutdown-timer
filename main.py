@@ -82,6 +82,7 @@ class ShutdownTimer(QWidget):
         self.remaining_seconds = 0
         self.notified = set()
         self.action = "shutdown"  # shutdown | reboot | suspend | hibernate
+        self.sound_enabled = True
         self.init_ui()
         self.init_tray()
 
@@ -323,10 +324,23 @@ class ShutdownTimer(QWidget):
         main_layout.addSpacing(14)
 
         # ── Footer ───────────────────────────────────────────────
+        footer_layout = QHBoxLayout()
         footer = QLabel("Made with \u2764 by uriel")
-        footer.setAlignment(Qt.AlignmentFlag.AlignCenter)
         footer.setStyleSheet(f"color: {TEXT_MUTED}; font-size: 11px;")
-        main_layout.addWidget(footer)
+
+        self.sound_btn = QPushButton("\U0001f514")
+        self.sound_btn.setFixedSize(28, 28)
+        self.sound_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.sound_btn.setToolTip("Sound on — click to mute")
+        self.sound_btn.setStyleSheet(
+            f"QPushButton {{ background-color: transparent; border: none; font-size: 15px; }}"
+            f"QPushButton:hover {{ background-color: {SECONDARY}; border-radius: 6px; }}"
+        )
+        self.sound_btn.clicked.connect(self._toggle_sound)
+
+        footer_layout.addWidget(footer, stretch=1)
+        footer_layout.addWidget(self.sound_btn)
+        main_layout.addLayout(footer_layout)
 
         self.setLayout(main_layout)
 
@@ -510,7 +524,18 @@ class ShutdownTimer(QWidget):
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
         )
 
+    def _toggle_sound(self):
+        self.sound_enabled = not self.sound_enabled
+        if self.sound_enabled:
+            self.sound_btn.setText("\U0001f514")
+            self.sound_btn.setToolTip("Sound on \u2014 click to mute")
+        else:
+            self.sound_btn.setText("\U0001f507")
+            self.sound_btn.setToolTip("Sound off \u2014 click to unmute")
+
     def _play(self, path):
+        if not self.sound_enabled:
+            return
         subprocess.Popen(
             ["paplay", path],
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
