@@ -9,7 +9,10 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt, QTimer, QTime
 from PyQt6.QtGui import QFont, QPalette, QColor, QIcon, QAction
 
-APP_DIR = os.path.dirname(os.path.abspath(__file__))
+APP_DIR  = os.path.dirname(os.path.abspath(__file__))
+SOUND_DIR = "/usr/share/sounds/freedesktop/stereo"
+SOUND_TICK  = os.path.join(SOUND_DIR, "bell.oga")
+SOUND_ALARM = os.path.join(SOUND_DIR, "alarm-clock-elapsed.oga")
 
 
 DARK_BG       = "#1a1a2e"
@@ -507,9 +510,16 @@ class ShutdownTimer(QWidget):
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
         )
 
+    def _play(self, path):
+        subprocess.Popen(
+            ["paplay", path],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+        )
+
     def update_countdown(self):
         if self.remaining_seconds <= 0:
             self.countdown_timer.stop()
+            self._play(SOUND_ALARM)
             if self.action in ("suspend", "hibernate"):
                 subprocess.Popen(
                     ["systemctl", self.action],
@@ -518,6 +528,10 @@ class ShutdownTimer(QWidget):
             return
         self.remaining_seconds -= 1
         self._refresh_countdown_display()
+
+        # Tick every second in the last 10 seconds
+        if self.remaining_seconds <= 10:
+            self._play(SOUND_TICK)
 
         minutes_left = self.remaining_seconds // 60
         seconds_left = self.remaining_seconds % 60
