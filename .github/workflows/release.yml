@@ -1,0 +1,88 @@
+name: Build & Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Extract version from tag
+        id: version
+        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> $GITHUB_OUTPUT
+
+      - name: Build .deb package
+        run: |
+          VERSION=${{ steps.version.outputs.VERSION }}
+
+          # Create package structure
+          mkdir -p pkg/DEBIAN
+          mkdir -p pkg/opt/shutdown-timer
+          mkdir -p pkg/usr/local/bin
+          mkdir -p pkg/usr/share/applications
+          mkdir -p pkg/usr/share/icons/hicolor/256x256/apps
+
+          # Write control file
+          cat > pkg/DEBIAN/control << EOF
+          Package: shutdown-timer
+          Version: ${VERSION}
+          Section: utils
+          Priority: optional
+          Architecture: all
+          Depends: python3, python3-pyqt6, libnotify-bin, pulseaudio-utils
+          Maintainer: uriel
+          Description: Shutdown Timer
+           A simple desktop app to schedule and cancel system shutdowns.
+          EOF
+
+          # Copy app files
+          cp main.py pkg/opt/shutdown-timer/main.py
+          cp icon.png pkg/opt/shutdown-timer/icon.png
+          cp icon.png pkg/usr/share/icons/hicolor/256x256/apps/shutdown-timer.png
+
+          # Launcher script
+          cat > pkg/usr/local/bin/shutdown-timer << 'EOF'
+          #!/bin/bash
+          cd /opt/shutdown-timer
+          exec python3 main.py "$@"
+          EOF
+          chmod +x pkg/usr/local/bin/shutdown-timer
+
+          # Desktop entry
+          cat > pkg/usr/share/applications/shutdown-timer.desktop << EOF
+          [Desktop Entry]
+          Name=Shutdown Timer
+          Comment=Schedule a system shutdown
+          Exec=/usr/local/bin/shutdown-timer
+          Icon=shutdown-timer
+          Terminal=false
+          Type=Application
+          Categories=Utility;System;
+          Keywords=shutdown;timer;power;
+          EOF
+
+          # Build .deb
+          dpkg-deb --build pkg shutdown-timer_${VERSION}_all.deb
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "Shutdown Timer v${{ steps.version.outputs.VERSION }}"
+          body: |
+            ## Shutdown Timer v${{ steps.version.outputs.VERSION }}
+
+            ### Installation
+            Download `shutdown-timer_${{ steps.version.outputs.VERSION }}_all.deb` below and run:
+            ```bash
+            sudo apt install ./shutdown-timer_${{ steps.version.outputs.VERSION }}_all.deb
+            ```
+            **Requirements:** Ubuntu / Debian-based Linux with `python3` and `python3-pyqt6` (installed automatically).
+          files: shutdown-timer_${{ steps.version.outputs.VERSION }}_all.deb
