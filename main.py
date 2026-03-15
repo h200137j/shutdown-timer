@@ -77,6 +77,7 @@ class ShutdownTimer(QWidget):
         self.countdown_timer = QTimer()
         self.countdown_timer.timeout.connect(self.update_countdown)
         self.remaining_seconds = 0
+        self.notified = set()
         self.init_ui()
         self.init_tray()
 
@@ -352,6 +353,7 @@ class ShutdownTimer(QWidget):
             return
 
         self.remaining_seconds = total_minutes * 60
+        self.notified.clear()
         self.countdown_timer.start(1000)
         self._refresh_countdown_display()
 
@@ -375,6 +377,7 @@ class ShutdownTimer(QWidget):
 
         self.countdown_timer.stop()
         self.remaining_seconds = 0
+        self.notified.clear()
         self.countdown_label.setText("00:00:00")
         self.countdown_label.setStyleSheet(f"color: {TEXT_PRIMARY}; letter-spacing: 4px;")
 
@@ -398,12 +401,33 @@ class ShutdownTimer(QWidget):
         else:
             self.countdown_label.setStyleSheet(f"color: {TEXT_PRIMARY}; letter-spacing: 2px;")
 
+    def _notify(self, minutes):
+        messages = {
+            10: ("Shutting down in 10 minutes", "Save your work!"),
+            5:  ("Shutting down in 5 minutes",  "Save your work now!"),
+            1:  ("Shutting down in 1 minute",   "Last chance to save!"),
+        }
+        title, body = messages[minutes]
+        icon = os.path.join(APP_DIR, "icon.png")
+        subprocess.Popen(
+            ["notify-send", "-i", icon, "-u", "critical", title, body],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+        )
+
     def update_countdown(self):
         if self.remaining_seconds <= 0:
             self.countdown_timer.stop()
             return
         self.remaining_seconds -= 1
         self._refresh_countdown_display()
+
+        minutes_left = self.remaining_seconds // 60
+        seconds_left = self.remaining_seconds % 60
+        for threshold in (10, 5, 1):
+            if minutes_left == threshold and seconds_left == 0 and threshold not in self.notified:
+                self.notified.add(threshold)
+                self._notify(threshold)
+                break
 
 
 if __name__ == "__main__":
