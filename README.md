@@ -51,7 +51,7 @@ Grab the latest `.deb` from the [Releases page](../../releases/latest) and run:
 
 ```bash
 # VERSION_PLACEHOLDER
-sudo apt install ./shutdown-timer_1.0.1_all.deb
+sudo apt install ./shutdown-timer_1.0.2_all.deb
 ```
 
 That's it. Dependencies (`python3`, `python3-pyqt6`, notifications, sound) install
