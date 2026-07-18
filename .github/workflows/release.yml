@@ -94,5 +94,9 @@ jobs:
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
           git add README.md
-          git commit -m "chore: update README version to ${VERSION} [skip ci]" || echo "No changes to commit"
-          git push origin master
+          if git diff --cached --quiet; then
+            echo "README already at ${VERSION}, nothing to push"
+          else
+            git commit -m "chore: update README version to ${VERSION} [skip ci]"
+            git push origin HEAD:master
+          fi
